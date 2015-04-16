@@ -23,7 +23,17 @@ import static org.springframework.web.bind.annotation.RequestMethod.POST;
 @RestController
 public class TemplateResource {
     private static final Logger log = LoggerFactory.getLogger(TemplateResource.class);
-    private static final Pattern GROUP_NAMES = Pattern.compile("\\(\\?<(.*)>\\)");
+    private static final Pattern GROUP_NAMES = Pattern.compile("\\(\\?<(.*)>.*\\)");
+
+    // TODO: this is ugly but java.util.Pattern does not expose parsed group names - look for another regex lib?
+    private static List<String> getGroupNames(String regex) {
+        List<String> result = new ArrayList<>();
+        final Matcher matcher = GROUP_NAMES.matcher(regex);
+        while (matcher.find()) {
+            result.add(matcher.group(1));
+        }
+        return result;
+    }
 
     @RequestMapping(value = "/templates/find", method = POST)
     public MultiValueMap findTemplate(@RequestBody TemplateMatchInput input) {
@@ -35,9 +45,9 @@ public class TemplateResource {
 
         for (String template : input.getTemplates()) {
             // TODO: would be much more performant to pre-compile & store regexes server-side
-            final Pattern pattern = Pattern.compile(template);
+            final Pattern pattern = Pattern.compile(".*" + template + ".*");
             final Matcher matcher = pattern.matcher(input.getInput());
-            if (matcher.groupCount() == 0) continue;
+            if (!matcher.matches()) continue;
 
             for (String groupName : getGroupNames(template)) {
                 final String group = matcher.group(groupName);
@@ -47,16 +57,6 @@ public class TemplateResource {
             }
         }
 
-        return result;
-    }
-
-    // TODO: this is ugly but java.util.Pattern does not expose parsed group names - look for another regex lib?
-    private static List<String> getGroupNames(String regex) {
-        List<String> result = new ArrayList<>();
-        final Matcher matcher = GROUP_NAMES.matcher(regex);
-        for (int i = 0; i < matcher.groupCount(); i++) {
-            result.add(matcher.group(i));
-        }
         return result;
     }
 
