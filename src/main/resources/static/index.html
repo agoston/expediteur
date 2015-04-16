@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/html">
+<head>
+    <title>Lubang Menggali</title>
+    <meta charset="utf-8"/>
+    <link rel="stylesheet" type="text/css" href="game.css"/>
+    <script src="jquery-2.1.1.min.js"></script>
+
+    <script charset="utf-8">
+
+        var player = {};
+        var opponent = {};
+        var match = {};
+        var whichPlayer = 0;
+        var drawOrder = [];     // opponent is always on top
+
+        var anim = null;
+
+        $(function () {
+            $.ajaxSetup({
+                dataType: "json",
+                error: function (jqXHR, textStatus, errorThrown) {
+                    // TODO: [AH] add better error reporting
+                    window.alert(textStatus + "\n" + errorThrown);
+                }
+            });
+
+            setStatus("Log in to play");
+
+            $("input.login:button").click(function (e) {
+                player.name = $("input.login:text").val();
+                login();
+                e.preventDefault();
+            });
+        });
+
+        function login() {
+            setStatus("Logging in...");
+            $.ajax({
+                url: "/player?name=" + player.name,
+                type: "POST",
+                success: function (data, textStatus, jqXHR) {
+                    console.log(data);
+                    player.id = data.id;
+                    anim = $("div.login").fadeOut().promise();
+                    startMatch();
+                }
+            });
+        }
+
+        function startMatch() {
+            setStatus("Looking for opponent...");
+            $.ajax({
+                url: "/player/" + player.id + "/match",
+                type: "POST",
+                success: function (data, textStatus, jqXHR) {
+                    console.log(data);
+
+                    if (jqXHR.status == 202) {
+                        window.setTimeout(startMatch, 1000);
+                        return;
+                    }
+
+                    match = data;
+
+                    // first-time init
+                    if (match.names[0] == player.name) {
+                        whichPlayer = 0;
+                        drawOrder = [1,0];
+                    } else if (match.names[1] == player.name) {
+                        whichPlayer = 1;
+                        drawOrder = [0,1];
+                    } else {
+                        window.alert("Can't find player!");
+                        return;
+                    }
+
+                    drawBoard();
+
+                    anim.done(function() {
+                        $("div.board").fadeIn();
+                    });
+
+                }
+            });
+        }
+
+        // TODO: [AH] put an extra div inside the pit divs, so that text can be styled fully & we're able to apply 'pointer-event: none'
+        // TODO: [AH] refactor this into smaller, parametrized methods
+        function drawBoard() {
+            var boardSelector = $("div.board");
+            boardSelector.empty();
+
+            // names
+            for (var i = 0; i < 2; i++) {
+                var nameDiv = document.createElement('div');
+                nameDiv.setAttribute("class", "names");
+                $(nameDiv).css({
+                    position: "absolute",
+                    left: "100px",
+                    top: (i * 200) + "px",
+                    width: "500px",
+                    height: "100px",
+                    margin: "5px",
+                    "text-align": "center",
+                    "line-height": "100px"
+                })
+                nameDiv.innerHTML = match.names[drawOrder[i]];
+                $(nameDiv).appendTo(boardSelector);
+            }
+
+            // pits
+            for (var i = 0; i <= 1; i++) {
+                for (var j = 0; j <= 5; j++) {
+                    var newDiv = document.createElement('div');
+
+                    $(newDiv).addClass("tiles").addClass(["opponent", "player"][i]);
+
+                    $(newDiv).css({
+                        position: "absolute",
+                        left: (200 + j * 50) + "px",
+                        top: (100 + i * 50) + "px",
+                        width: "40px",
+                        height: "40px",
+                        margin: "5px",
+                        "text-align": "center",
+                        "line-height": "40px",
+                        "user-select": "none"
+                    });
+
+                    newDiv.innerHTML = match.pits[drawOrder[i]][(i==0)?5-j:j];  // TODO: [AH] ouch, there's gotta be a nicer way
+                    $(newDiv).appendTo(boardSelector);
+                }
+            }
+
+            // lubang menggali
+            for (var i = 0; i < 2; i++) {
+                var newDiv = document.createElement('div');
+
+                $(newDiv).addClass("lubangmenggali").addClass(["opponent", "player"][i]);
+
+                $(newDiv).css({
+                    position: "absolute",
+                    left: (100 + i * 400) + "px",
+                    top: "100px",
+                    width: "90px",
+                    height: "90px",
+                    margin: "5px",
+                    "text-align": "center",
+                    "line-height": "90px",
+                    "user-select": "none"
+                });
+
+                newDiv.innerHTML = match.pits[drawOrder[i]][6];
+                $(newDiv).appendTo(boardSelector);
+            }
+
+            updateStatus();
+        }
+
+        function updateStatus() {
+            // MOVE_PLAYER_1, MOVE_PLAYER_2, PLAYER_LOGOUT, WON_PLAYER_1, WON_PLAYER_2, WON_BOTH
+            if ((match.state == 'MOVE_PLAYER_1' && whichPlayer == 0) || (match.state == 'MOVE_PLAYER_2' && whichPlayer == 1)) {
+                setStatus("Make your move!");
+                addBoardEventListeners();
+            } else if ((match.state == 'MOVE_PLAYER_1' && whichPlayer == 1) || (match.state == 'MOVE_PLAYER_2' && whichPlayer == 0)) {
+                setStatus("Wait for your turn!");
+                updateBoardWhenStateChangedFrom(match.state);
+            } else if (match.state == 'PLAYER_LOGOUT') {
+                setStatus("GAME OVER (Opponent logged out)");
+            } else if ((match.state == 'WON_PLAYER_1' && whichPlayer == 0) || (match.state == 'WON_PLAYER_2' && whichPlayer == 1)) {
+                setStatus("GAME OVER. You WON!");
+            } else if ((match.state == 'WON_PLAYER_1' && whichPlayer == 1) || (match.state == 'WON_PLAYER_2' && whichPlayer == 0)) {
+                setStatus("GAME OVER. You LOSE!");
+            } else if (match.state == 'WON_BOTH') {
+                setStatus("GAME OVER. It's a DRAW!");
+            } else {
+                // should not happen
+                console.log(match.state + ": unknown state");
+                setStatus("");
+            }
+        }
+
+        function addBoardEventListeners() {
+            $("div.board .player.tiles").click(function(e) {
+                var pit = $("div.board .player").index(this);
+
+                makeMove(pit);
+
+                e.preventDefault();
+            })
+        }
+
+        function updateBoardWhenStateChangedFrom(state) {
+            $.ajax({
+                url: "/player/" + player.id + "/match",
+                type: "GET",
+                success: function (data, textStatus, jqXHR) {
+                    console.log(data);
+
+                    if (data.state == state && !pitsChanged(match, data)) {
+                        window.setTimeout(function() {
+                            updateBoardWhenStateChangedFrom(state);
+                        }, 1000);
+                        return;
+                    }
+
+                    anim = $("div.board").fadeOut(40).promise();
+
+                    match = data;
+                    drawBoard();
+
+                    anim.done(function() {
+                        $("div.board").fadeIn(40);
+                    });
+                }
+            });
+        }
+
+        function pitsChanged(match1, match2) {
+            for (var i = 0; i < 2; i++) {
+                for (var j = 0; j < 7; j++) {
+                    if (match1.pits[i][j] != match2.pits[i][j]) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        function makeMove(pit) {
+            anim = $("div.board").fadeOut(40).promise();
+            $.ajax({
+                url: "/player/" + player.id + "/match/" + pit,
+                type: "GET",
+                success: function (data, textStatus, jqXHR) {
+                    console.log(data);
+                    match = data;
+                    drawBoard();
+
+                    anim.done(function() {
+                        $("div.board").fadeIn(40);
+                    });
+                }
+            });
+        }
+
+        function setStatus(statusText) {
+            $("div.status div.text")[0].innerHTML = statusText;
+        }
+
+    </script>
+</head>
+<body>
+
+<div class="login">
+    You are: <input type="text" class="login" name="name" value="Anonymous"/><input type="button" value="Start!"
+                                                                                    class="login"/>
+</div>
+
+<div class="board"></div>
+
+<div class="status">
+    <div class="text">
+    </div>
+</div>
+
+</body>
