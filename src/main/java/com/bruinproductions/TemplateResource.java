@@ -49,14 +49,16 @@ public class TemplateResource {
         for (String template : input.getTemplates()) {
             // TODO: would be much more performant to pre-compile & store regexes server-side
             final Pattern pattern = Pattern.compile(".*" + template + ".*", Pattern.CASE_INSENSITIVE | Pattern.DOTALL);
+            final List<String> groupNames = getGroupNames(template);
             final Matcher matcher = pattern.matcher(input.getInput());
-            if (!matcher.matches()) continue;
 
-            for (String groupName : getGroupNames(template)) {
-                final String group = matcher.group(groupName);
-                if (Strings.isNullOrEmpty(group)) continue;
+            while (matcher.find()) {
+                for (String groupName : groupNames) {
+                    final String group = matcher.group(groupName);
+                    if (Strings.isNullOrEmpty(group)) continue;
 
-                result.add(groupName, group);
+                    result.add(groupName, group);
+                }
             }
         }
 
