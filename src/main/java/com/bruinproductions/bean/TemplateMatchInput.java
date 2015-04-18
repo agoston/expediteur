@@ -6,6 +6,13 @@ public class TemplateMatchInput {
     String input;
     List<String> templates;
 
+    public TemplateMatchInput() {}
+
+    public TemplateMatchInput(String input, List<String> templates) {
+        this.input = input;
+        this.templates = templates;
+    }
+
     public String getInput() {
         return input;
     }
