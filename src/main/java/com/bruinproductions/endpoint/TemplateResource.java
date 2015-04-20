@@ -1,12 +1,16 @@
-package com.bruinproductions;
+package com.bruinproductions.endpoint;
 
+import com.bruinproductions.bean.TemplateBean;
 import com.bruinproductions.bean.TemplateMatchInput;
+import com.bruinproductions.dao.TemplateRepository;
 import com.google.common.base.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.util.CollectionUtils;
 import org.springframework.util.LinkedMultiValueMap;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -18,11 +22,16 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.springframework.web.bind.annotation.RequestMethod.POST;
+import static org.springframework.web.bind.annotation.RequestMethod.PUT;
+import static org.springframework.web.bind.annotation.RequestMethod.GET;
 
 @RestController
 public class TemplateResource {
     private static final Logger log = LoggerFactory.getLogger(TemplateResource.class);
     private static final Pattern GROUP_NAMES = Pattern.compile("\\(\\?<(.*?)>.*?\\)");
+
+    @Autowired
+    TemplateRepository templateRepository;
 
     // TODO: this is ugly but java.util.Pattern does not expose parsed group names - look for another regex lib?
     private static List<String> getGroupNames(String regex) {
@@ -65,7 +74,28 @@ public class TemplateResource {
         return result;
     }
 
-    @ResponseStatus(value = HttpStatus.BAD_REQUEST, reason = "Malformed input")
-    class MalformedInputException extends RuntimeException {
+    // TODO: catch known exceptions, throw @ResponseStatus exceptions
+    @RequestMapping(value = "/templates", method = POST)
+    public TemplateBean createTemplate(@RequestBody TemplateBean input) {
+        input.setId(null);
+        templateRepository.save(input);
+        return input;
     }
+
+    // TODO: catch known exceptions, throw @ResponseStatus exceptions
+    @RequestMapping(value = "/templates/{id}", method = PUT)
+    public TemplateBean updateTemplate(@PathVariable String id, @RequestBody TemplateBean input) {
+        input.setId(id);
+        templateRepository.save(input);
+        return input;
+    }
+
+    // TODO: catch known exceptions, throw @ResponseStatus exceptions
+    @RequestMapping(value = "/templates/{id}", method = GET)
+    public TemplateBean readTemplate(@PathVariable String id) {
+        return templateRepository.findOne(id);
+    }
+
+    @ResponseStatus(value = HttpStatus.BAD_REQUEST, reason = "Malformed input")
+    class MalformedInputException extends RuntimeException {}
 }

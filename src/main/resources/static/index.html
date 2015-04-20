@@ -1,264 +1,226 @@
 <!DOCTYPE html>
 <html xmlns="http://www.w3.org/1999/html">
 <head>
-    <title>Lubang Menggali</title>
+    <title>Templatr</title>
     <meta charset="utf-8"/>
-    <link rel="stylesheet" type="text/css" href="game.css"/>
+    <link rel="stylesheet" type="text/css" href="templatr.css"/>
+    <link rel="stylesheet" href="quill.snow.css">
+
     <script src="jquery-2.1.1.min.js"></script>
+    <script src="quill.min.js"></script>
 
     <script charset="utf-8">
 
-        var player = {};
-        var opponent = {};
-        var match = {};
-        var whichPlayer = 0;
-        var drawOrder = [];     // opponent is always on top
-
-        var anim = null;
+        var editor;
+        var selection;
 
         $(function () {
             $.ajaxSetup({
                 dataType: "json",
+                contentType:"application/json; charset=utf-8",
                 error: function (jqXHR, textStatus, errorThrown) {
                     // TODO: [AH] add better error reporting
                     window.alert(textStatus + "\n" + errorThrown);
                 }
             });
 
-            setStatus("Log in to play");
-
-            $("input.login:button").click(function (e) {
-                player.name = $("input.login:text").val();
-                login();
+            $("input.persist:button").click(function (e) {
+                persistTemplate();
                 e.preventDefault();
             });
+
+            // Initialize editor with custom theme and modules
+            editor = new Quill('#toolbar-editor', {
+                modules: {
+                    toolbar: {container: '#toolbar-toolbar'}
+                },
+                theme: 'snow'
+            });
+
+            editor.on('selection-change', function(range) {
+                if (range) {
+                    // editor.getSelection() always returned null, hence this
+                    selection = range;
+                }
+            });
+
         });
 
-        function login() {
-            setStatus("Logging in...");
+        function persistTemplate() {
+            var selection = fetchSelection();
+            if (!selection) {
+                setStatus("No text selected!");
+                return;
+            }
+
+            console.log(selection);
+
             $.ajax({
-                url: "/player?name=" + player.name,
+                url: "/templates",
+                data: JSON.stringify({
+                    tag: $("input.persist:text").val(),
+                    preTag: selection.preTag,
+                    postTag: selection.postTag
+                }),
                 type: "POST",
                 success: function (data, textStatus, jqXHR) {
                     console.log(data);
-                    player.id = data.id;
-                    anim = $("div.login").fadeOut().promise();
-                    startMatch();
+                    setStatus("Saved successfully!");
                 }
             });
         }
 
-        function startMatch() {
-            setStatus("Looking for opponent...");
-            $.ajax({
-                url: "/player/" + player.id + "/match",
-                type: "POST",
-                success: function (data, textStatus, jqXHR) {
-                    console.log(data);
+        function fetchSelection() {
+            if ((selection) && (selection.end > selection.start)) {
+                // regex: positive lookahead
+                var before = editor.getText(0, selection.start).split(/(?=[^\w\s])/);
+                var after = editor.getText(selection.end).split(/(?=[^\w\s])/);
 
-                    if (jqXHR.status == 202) {
-                        window.setTimeout(startMatch, 1000);
-                        return;
-                    }
+                var beforeTag = "", afterTag = "";
+                for (var i = before.length-1; i >= 0 && beforeTag.length <= 3; i--) beforeTag = before[i] + beforeTag;
+                for (var i = 0; i < after.length && afterTag.length <= 3; i++) afterTag += after[i];
 
-                    match = data;
-
-                    // first-time init
-                    if (match.names[0] == player.name) {
-                        whichPlayer = 0;
-                        drawOrder = [1,0];
-                    } else if (match.names[1] == player.name) {
-                        whichPlayer = 1;
-                        drawOrder = [0,1];
-                    } else {
-                        window.alert("Can't find player!");
-                        return;
-                    }
-
-                    drawBoard();
-
-                    anim.done(function() {
-                        $("div.board").fadeIn();
-                    });
-
-                }
-            });
-        }
-
-        // TODO: [AH] put an extra div inside the pit divs, so that text can be styled fully & we're able to apply 'pointer-event: none'
-        // TODO: [AH] refactor this into smaller, parametrized methods
-        function drawBoard() {
-            var boardSelector = $("div.board");
-            boardSelector.empty();
-
-            // names
-            for (var i = 0; i < 2; i++) {
-                var nameDiv = document.createElement('div');
-                nameDiv.setAttribute("class", "names");
-                $(nameDiv).css({
-                    position: "absolute",
-                    left: "100px",
-                    top: (i * 200) + "px",
-                    width: "500px",
-                    height: "100px",
-                    margin: "5px",
-                    "text-align": "center",
-                    "line-height": "100px"
-                })
-                nameDiv.innerHTML = match.names[drawOrder[i]];
-                $(nameDiv).appendTo(boardSelector);
-            }
-
-            // pits
-            for (var i = 0; i <= 1; i++) {
-                for (var j = 0; j <= 5; j++) {
-                    var newDiv = document.createElement('div');
-
-                    $(newDiv).addClass("tiles").addClass(["opponent", "player"][i]);
-
-                    $(newDiv).css({
-                        position: "absolute",
-                        left: (200 + j * 50) + "px",
-                        top: (100 + i * 50) + "px",
-                        width: "40px",
-                        height: "40px",
-                        margin: "5px",
-                        "text-align": "center",
-                        "line-height": "40px",
-                        "user-select": "none"
-                    });
-
-                    newDiv.innerHTML = match.pits[drawOrder[i]][(i==0)?5-j:j];  // TODO: [AH] ouch, there's gotta be a nicer way
-                    $(newDiv).appendTo(boardSelector);
+                return {
+                    preTag: beforeTag,
+                    postTag: afterTag
                 }
             }
-
-            // lubang menggali
-            for (var i = 0; i < 2; i++) {
-                var newDiv = document.createElement('div');
-
-                $(newDiv).addClass("lubangmenggali").addClass(["opponent", "player"][i]);
-
-                $(newDiv).css({
-                    position: "absolute",
-                    left: (100 + i * 400) + "px",
-                    top: "100px",
-                    width: "90px",
-                    height: "90px",
-                    margin: "5px",
-                    "text-align": "center",
-                    "line-height": "90px",
-                    "user-select": "none"
-                });
-
-                newDiv.innerHTML = match.pits[drawOrder[i]][6];
-                $(newDiv).appendTo(boardSelector);
-            }
-
-            updateStatus();
-        }
-
-        function updateStatus() {
-            // MOVE_PLAYER_1, MOVE_PLAYER_2, PLAYER_LOGOUT, WON_PLAYER_1, WON_PLAYER_2, WON_BOTH
-            if ((match.state == 'MOVE_PLAYER_1' && whichPlayer == 0) || (match.state == 'MOVE_PLAYER_2' && whichPlayer == 1)) {
-                setStatus("Make your move!");
-                addBoardEventListeners();
-            } else if ((match.state == 'MOVE_PLAYER_1' && whichPlayer == 1) || (match.state == 'MOVE_PLAYER_2' && whichPlayer == 0)) {
-                setStatus("Wait for your turn!");
-                updateBoardWhenStateChangedFrom(match.state);
-            } else if (match.state == 'PLAYER_LOGOUT') {
-                setStatus("GAME OVER (Opponent logged out)");
-            } else if ((match.state == 'WON_PLAYER_1' && whichPlayer == 0) || (match.state == 'WON_PLAYER_2' && whichPlayer == 1)) {
-                setStatus("GAME OVER. You WON!");
-            } else if ((match.state == 'WON_PLAYER_1' && whichPlayer == 1) || (match.state == 'WON_PLAYER_2' && whichPlayer == 0)) {
-                setStatus("GAME OVER. You LOSE!");
-            } else if (match.state == 'WON_BOTH') {
-                setStatus("GAME OVER. It's a DRAW!");
-            } else {
-                // should not happen
-                console.log(match.state + ": unknown state");
-                setStatus("");
-            }
-        }
-
-        function addBoardEventListeners() {
-            $("div.board .player.tiles").click(function(e) {
-                var pit = $("div.board .player").index(this);
-
-                makeMove(pit);
-
-                e.preventDefault();
-            })
-        }
-
-        function updateBoardWhenStateChangedFrom(state) {
-            $.ajax({
-                url: "/player/" + player.id + "/match",
-                type: "GET",
-                success: function (data, textStatus, jqXHR) {
-                    console.log(data);
-
-                    if (data.state == state && !pitsChanged(match, data)) {
-                        window.setTimeout(function() {
-                            updateBoardWhenStateChangedFrom(state);
-                        }, 1000);
-                        return;
-                    }
-
-                    anim = $("div.board").fadeOut(40).promise();
-
-                    match = data;
-                    drawBoard();
-
-                    anim.done(function() {
-                        $("div.board").fadeIn(40);
-                    });
-                }
-            });
-        }
-
-        function pitsChanged(match1, match2) {
-            for (var i = 0; i < 2; i++) {
-                for (var j = 0; j < 7; j++) {
-                    if (match1.pits[i][j] != match2.pits[i][j]) {
-                        return true;
-                    }
-                }
-            }
-            return false;
-        }
-
-        function makeMove(pit) {
-            anim = $("div.board").fadeOut(40).promise();
-            $.ajax({
-                url: "/player/" + player.id + "/match/" + pit,
-                type: "GET",
-                success: function (data, textStatus, jqXHR) {
-                    console.log(data);
-                    match = data;
-                    drawBoard();
-
-                    anim.done(function() {
-                        $("div.board").fadeIn(40);
-                    });
-                }
-            });
+            return null;
         }
 
         function setStatus(statusText) {
             $("div.status div.text")[0].innerHTML = statusText;
+            $("div.status div.text").fadeIn().delay(1500).fadeOut();
         }
 
     </script>
 </head>
 <body>
 
-<div class="login">
-    You are: <input type="text" class="login" name="name" value="Anonymous"/><input type="button" value="Start!"
-                                                                                    class="login"/>
+<div class="welcome">
+    Welcome to Templatr.
 </div>
 
-<div class="board"></div>
+<div class="quill-wrapper">
+    <div id="toolbar-toolbar" class="toolbar">
+        <span class="ql-format-group">
+            <select title="Font" class="ql-font">
+                <option value="sans-serif" selected="">Sans Serif</option>
+                <option value="serif">Serif</option>
+                <option value="monospace">Monospace</option>
+            </select>
+            <select title="Size" class="ql-size">
+                <option value="10px">Small</option>
+                <option value="13px" selected="">Normal</option>
+                <option value="18px">Large</option>
+                <option value="32px">Huge</option>
+            </select>
+        </span>
+        <span class="ql-format-group">
+            <span title="Bold" class="ql-format-button ql-bold"></span>
+            <span class="ql-format-separator"></span>
+            <span title="Italic" class="ql-format-button ql-italic"></span>
+            <span class="ql-format-separator"></span>
+            <span title="Underline" class="ql-format-button ql-underline"></span>
+            <span class="ql-format-separator"></span>
+            <span title="Strikethrough" class="ql-format-button ql-strike"></span>
+        </span>
+        <span class="ql-format-group">
+            <select title="Text Color" class="ql-color">
+                <option value="rgb(0, 0, 0)" label="rgb(0, 0, 0)" selected=""></option>
+                <option value="rgb(230, 0, 0)" label="rgb(230, 0, 0)"></option>
+                <option value="rgb(255, 153, 0)" label="rgb(255, 153, 0)"></option>
+                <option value="rgb(255, 255, 0)" label="rgb(255, 255, 0)"></option>
+                <option value="rgb(0, 138, 0)" label="rgb(0, 138, 0)"></option>
+                <option value="rgb(0, 102, 204)" label="rgb(0, 102, 204)"></option>
+                <option value="rgb(153, 51, 255)" label="rgb(153, 51, 255)"></option>
+                <option value="rgb(255, 255, 255)" label="rgb(255, 255, 255)"></option>
+                <option value="rgb(250, 204, 204)" label="rgb(250, 204, 204)"></option>
+                <option value="rgb(255, 235, 204)" label="rgb(255, 235, 204)"></option>
+                <option value="rgb(255, 255, 204)" label="rgb(255, 255, 204)"></option>
+                <option value="rgb(204, 232, 204)" label="rgb(204, 232, 204)"></option>
+                <option value="rgb(204, 224, 245)" label="rgb(204, 224, 245)"></option>
+                <option value="rgb(235, 214, 255)" label="rgb(235, 214, 255)"></option>
+                <option value="rgb(187, 187, 187)" label="rgb(187, 187, 187)"></option>
+                <option value="rgb(240, 102, 102)" label="rgb(240, 102, 102)"></option>
+                <option value="rgb(255, 194, 102)" label="rgb(255, 194, 102)"></option>
+                <option value="rgb(255, 255, 102)" label="rgb(255, 255, 102)"></option>
+                <option value="rgb(102, 185, 102)" label="rgb(102, 185, 102)"></option>
+                <option value="rgb(102, 163, 224)" label="rgb(102, 163, 224)"></option>
+                <option value="rgb(194, 133, 255)" label="rgb(194, 133, 255)"></option>
+                <option value="rgb(136, 136, 136)" label="rgb(136, 136, 136)"></option>
+                <option value="rgb(161, 0, 0)" label="rgb(161, 0, 0)"></option>
+                <option value="rgb(178, 107, 0)" label="rgb(178, 107, 0)"></option>
+                <option value="rgb(178, 178, 0)" label="rgb(178, 178, 0)"></option>
+                <option value="rgb(0, 97, 0)" label="rgb(0, 97, 0)"></option>
+                <option value="rgb(0, 71, 178)" label="rgb(0, 71, 178)"></option>
+                <option value="rgb(107, 36, 178)" label="rgb(107, 36, 178)"></option>
+                <option value="rgb(68, 68, 68)" label="rgb(68, 68, 68)"></option>
+                <option value="rgb(92, 0, 0)" label="rgb(92, 0, 0)"></option>
+                <option value="rgb(102, 61, 0)" label="rgb(102, 61, 0)"></option>
+                <option value="rgb(102, 102, 0)" label="rgb(102, 102, 0)"></option>
+                <option value="rgb(0, 55, 0)" label="rgb(0, 55, 0)"></option>
+                <option value="rgb(0, 41, 102)" label="rgb(0, 41, 102)"></option>
+                <option value="rgb(61, 20, 102)" label="rgb(61, 20, 102)"></option>
+            </select>
+            <span class="ql-format-separator"></span>
+            <select title="Background Color" class="ql-background">
+                <option value="rgb(0, 0, 0)" label="rgb(0, 0, 0)"></option>
+                <option value="rgb(230, 0, 0)" label="rgb(230, 0, 0)"></option>
+                <option value="rgb(255, 153, 0)" label="rgb(255, 153, 0)"></option>
+                <option value="rgb(255, 255, 0)" label="rgb(255, 255, 0)"></option>
+                <option value="rgb(0, 138, 0)" label="rgb(0, 138, 0)"></option>
+                <option value="rgb(0, 102, 204)" label="rgb(0, 102, 204)"></option>
+                <option value="rgb(153, 51, 255)" label="rgb(153, 51, 255)"></option>
+                <option value="rgb(255, 255, 255)" label="rgb(255, 255, 255)" selected=""></option>
+                <option value="rgb(250, 204, 204)" label="rgb(250, 204, 204)"></option>
+                <option value="rgb(255, 235, 204)" label="rgb(255, 235, 204)"></option>
+                <option value="rgb(255, 255, 204)" label="rgb(255, 255, 204)"></option>
+                <option value="rgb(204, 232, 204)" label="rgb(204, 232, 204)"></option>
+                <option value="rgb(204, 224, 245)" label="rgb(204, 224, 245)"></option>
+                <option value="rgb(235, 214, 255)" label="rgb(235, 214, 255)"></option>
+                <option value="rgb(187, 187, 187)" label="rgb(187, 187, 187)"></option>
+                <option value="rgb(240, 102, 102)" label="rgb(240, 102, 102)"></option>
+                <option value="rgb(255, 194, 102)" label="rgb(255, 194, 102)"></option>
+                <option value="rgb(255, 255, 102)" label="rgb(255, 255, 102)"></option>
+                <option value="rgb(102, 185, 102)" label="rgb(102, 185, 102)"></option>
+                <option value="rgb(102, 163, 224)" label="rgb(102, 163, 224)"></option>
+                <option value="rgb(194, 133, 255)" label="rgb(194, 133, 255)"></option>
+                <option value="rgb(136, 136, 136)" label="rgb(136, 136, 136)"></option>
+                <option value="rgb(161, 0, 0)" label="rgb(161, 0, 0)"></option>
+                <option value="rgb(178, 107, 0)" label="rgb(178, 107, 0)"></option>
+                <option value="rgb(178, 178, 0)" label="rgb(178, 178, 0)"></option>
+                <option value="rgb(0, 97, 0)" label="rgb(0, 97, 0)"></option>
+                <option value="rgb(0, 71, 178)" label="rgb(0, 71, 178)"></option>
+                <option value="rgb(107, 36, 178)" label="rgb(107, 36, 178)"></option>
+                <option value="rgb(68, 68, 68)" label="rgb(68, 68, 68)"></option>
+                <option value="rgb(92, 0, 0)" label="rgb(92, 0, 0)"></option>
+                <option value="rgb(102, 61, 0)" label="rgb(102, 61, 0)"></option>
+                <option value="rgb(102, 102, 0)" label="rgb(102, 102, 0)"></option>
+                <option value="rgb(0, 55, 0)" label="rgb(0, 55, 0)"></option>
+                <option value="rgb(0, 41, 102)" label="rgb(0, 41, 102)"></option>
+                <option value="rgb(61, 20, 102)" label="rgb(61, 20, 102)"></option>
+            </select>
+        </span>
+        <span class="ql-format-group">
+            <span title="List" class="ql-format-button ql-list"></span>
+            <span class="ql-format-separator"></span>
+            <span title="Bullet" class="ql-format-button ql-bullet"></span>
+            <span class="ql-format-separator"></span>
+            <select title="Text Alignment" class="ql-align">
+                <option value="left" label="Left" selected=""></option>
+                <option value="center" label="Center"></option>
+                <option value="right" label="Right"></option>
+                <option value="justify" label="Justify"></option>
+            </select>
+        </span>
+    </div>
+    <div id="toolbar-editor" class="editor"></div>
+</div>
+
+<div class="persist">
+    <label>Template name: <input type="text" class="persist" name="template" value=""/></label><input type="button" value="Save" class="persist"/>
+</div>
 
 <div class="status">
     <div class="text">

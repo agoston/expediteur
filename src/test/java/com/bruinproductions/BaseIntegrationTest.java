@@ -1,5 +1,6 @@
 package com.bruinproductions;
 
+import com.bruinproductions.bean.TemplateBean;
 import com.bruinproductions.bean.TemplateMatchInput;
 import org.junit.Ignore;
 import org.junit.Test;
@@ -34,7 +35,7 @@ public class BaseIntegrationTest {
                 Arrays.asList(
                         "package\\W+number\\W+(?<packageNumber>\\w{3}\\d{6})",
                         "receive.*on\\W+(?<receiveDate>\\w+, \\w+ \\d+, \\d+) at (?<receiveTime>\\d+:\\d+)"
-                        ));
+                ));
 
         final LinkedMultiValueMap<String, String> result = restTemplate.postForObject(baseURL + "/templates/find", input, LinkedMultiValueMap.class);
         assertNotNull(result);
@@ -76,4 +77,27 @@ public class BaseIntegrationTest {
         assertThat(result.get("name"), is("Mr. Raphael Doona"));
     }
 
+    @Test
+    public void testCreateTemple() {
+        TemplateBean templateBean = new TemplateBean();
+        templateBean.setTag("tag");
+        templateBean.setPreTag("pre");
+        templateBean.setPostTag("post");
+
+        TemplateBean result = restTemplate.postForObject(baseURL + "/templates", templateBean, TemplateBean.class);
+
+        assertNotNull(result);
+        assertThat(result.getId().length(), is(24));
+        assertThat(result.getTag(), is("tag"));
+        assertThat(result.getPreTag(), is("pre"));
+        assertThat(result.getPostTag(), is("post"));
+
+        TemplateBean query = restTemplate.getForObject(baseURL + "/templates/" + result.getId(), TemplateBean.class);
+
+        assertNotNull(result);
+        assertThat(result.getId(), is(result.getId()));
+        assertThat(result.getTag(), is("tag"));
+        assertThat(result.getPreTag(), is("pre"));
+        assertThat(result.getPostTag(), is("post"));
+    }
 }
