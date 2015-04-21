@@ -15,7 +15,7 @@ import org.springframework.web.client.RestTemplate;
 
 import java.util.Arrays;
 
-import static org.hamcrest.CoreMatchers.is;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThat;
 
@@ -73,8 +73,8 @@ public class BaseIntegrationTest {
         final LinkedMultiValueMap<String, String> result = restTemplate.postForObject(baseURL + "/templates/find", input, LinkedMultiValueMap.class);
         assertNotNull(result);
         assertThat(result.size(), is(2));
-        assertThat(result.get("reservationNumber"), is("28273642"));
-        assertThat(result.get("name"), is("Mr. Raphael Doona"));
+        assertThat(result.get("reservationNumber").get(0), is("28273642"));
+        assertThat(result.get("name").get(0), is("Mr. Raphael Doona"));
     }
 
     @Test
